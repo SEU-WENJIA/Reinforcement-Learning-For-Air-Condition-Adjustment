@@ -50,7 +50,7 @@ if not os.path.exists(filename):
     os.mkdir(filename)
 
 
-# 打开输出文件，文件名加上当前时间
+ 
 with open(f'{filename}TD3_plus_training_log.txt', 'w') as log_file:
     for episode in range(num_episodes):
         state = get_state_global(data.iloc[0])
@@ -65,8 +65,8 @@ with open(f'{filename}TD3_plus_training_log.txt', 'w') as log_file:
             action_mapped = np.zeros(8)
             for i in range(4):
                 action_mapped[i * 2] = (action[i * 2] + 1) / 2  # 将 [-1, 1] 映射到 [0, 1]
-                set_T = (action[i * 2 + 1] + 1) * 4 + 18  # 将 [-1, 1] 映射到 [18, 26]
-                action_mapped[i * 2 + 1] = np.clip(set_T, 18, 28)  # 确保设定温度在 [18, 26] 范围内
+                set_T = (action[i * 2 + 1] + 1) * 4 + 18  # 将 [-1, 1] 映射到 [18, 28]
+                action_mapped[i * 2 + 1] = np.clip(set_T, 18, 28)  # 确保设定温度在 [18, 28] 范围内
 
             # 执行动作，获取下一个状态
             next_state = get_state_global(data.iloc[t + 1])
