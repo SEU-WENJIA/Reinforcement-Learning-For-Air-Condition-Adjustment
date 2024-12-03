@@ -165,7 +165,7 @@ class LocalValueNet(nn.Module):
 # 定义局部动作映射
 def map_action(action):
     status = (action[0] + 1) / 2  # 将 [-1, 1] 映射到 [0, 1]
-    set_temp = abs(action[1] + 1)/2 * (28-18) + 18  # 将 [-1, 1] 映射到 [18, 26]
+    set_temp = abs(action[1] + 1)/2 * (28-18) + 18  # 将 [-1, 1] 映射到 [18, 28]
     return np.array([status, np.clip(set_temp, 18, 28)])
 
 # VDN类

@@ -1,25 +1,14 @@
 import pandas as pd
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import torch.distributions as distributions
-from torch.utils.tensorboard import SummaryWriter
-from collections import deque, namedtuple
-import random
 import datetime
-import argparse
 import os
-import sys
-import gym
 from models import TD3
 from utils import get_state_global, calculate_reward_global
 import matplotlib.pyplot as plt
 
 # 读取数据
 data = pd.read_csv('data\\data01.csv')
-
 
 
 # 参数初始化
@@ -50,11 +39,11 @@ if not os.path.exists(filename):
     os.mkdir(filename)
 
 
- 
+# 打开输出文件，文件名加上当前时间
 with open(f'{filename}TD3_plus_training_log.txt', 'w') as log_file:
     for episode in range(num_episodes):
         state = get_state_global(data.iloc[0])
-        # log_file.write(f"Episode {episode + 1}/{num_episodes}  ")
+
         for t in range(max_steps):
             # 选择动作
             state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
@@ -64,7 +53,7 @@ with open(f'{filename}TD3_plus_training_log.txt', 'w') as log_file:
             # 将动作转换为实际的空调状态和设定温度
             action_mapped = np.zeros(8)
             for i in range(4):
-                action_mapped[i * 2] = (action[i * 2] + 1) / 2  # 将 [-1, 1] 映射到 [0, 1]
+                action_mapped[i * 2] = int((action[i * 2] + 1) / 2 >= 0.5) #(action[i * 2] + 1) / 2  # 将 [-1, 1] 映射到 [0, 1]
                 set_T = (action[i * 2 + 1] + 1) * 4 + 18  # 将 [-1, 1] 映射到 [18, 28]
                 action_mapped[i * 2 + 1] = np.clip(set_T, 18, 28)  # 确保设定温度在 [18, 28] 范围内
 
@@ -97,10 +86,10 @@ with open(f'{filename}TD3_plus_training_log.txt', 'w') as log_file:
             prev_action = action_mapped  # 更新上一个动作
 
 
-
-            if max_steps%50==0:
-                # 可视化action 结果
-                fig, axs = plt.subplots(2, 4, figsize=(20, 10),dpi=600)  # 注意这里的figsize调整为15x10更合适
+            # 可视化结果
+            if (t+1)%200==0:
+                
+                fig, axs = plt.subplots(2, 4, figsize=(16, 8),dpi=50)  # 注意这里的figsize调整为15x10更合适
                 actions_plot = np.array(actions)
                 # 绘制4个空调的状态
                 for i in range(4):
@@ -113,16 +102,18 @@ with open(f'{filename}TD3_plus_training_log.txt', 'w') as log_file:
                     ax_state.set_title(f'AC{i+1} State Over Time')
                     ax_state.set_xlabel('Time Step')
                     ax_state.set_ylabel('Status (On/Off)')
+                    ax_state.set_ylim([-0.1,1.1])
                     
                     # 绘制设定温度
                     ax_T.plot(actions_plot[:, i * 2 + 1], label=f'AC{i+1} Set Temperature')
                     ax_T.set_title(f'AC{i+1} Set Temperature Over Time')
                     ax_T.set_xlabel('Time Step')
                     ax_T.set_ylabel('Temperature (°C)')
+                    
 
                 plt.tight_layout()
                 fig.savefig(f'{filename}ac_status_and_Teratures.png')
-
+                plt.close()
 
                 fig, axs = plt.subplots(1,1, figsize=(3, 2.4),dpi=300)  # 注意这里的figsize调整为15x10更合适
                 rewards_plot = np.array(rewards)
@@ -132,10 +123,51 @@ with open(f'{filename}TD3_plus_training_log.txt', 'w') as log_file:
                 axs.set_ylabel('Reward Value')
                 plt.tight_layout()
                 fig.savefig(f'{filename}reward_status_and_Teratures.png')
+                plt.close()
+                print(f"Step {t + 1}/{max_steps}: Action {action_mapped}, Reward {reward:.4f} Next State {next_state} \n")
 
-# 保存模型
-torch.save(agent.actor.state_dict(), f'{filename}actor_model.pth')
-torch.save(agent.critic_1.state_dict(), f'{filename}critic1_model.pth')
-torch.save(agent.critic_2.state_dict(), f'{filename}critic2_model.pth')
+
+                next_states_array = np.array(next_states)
+                sensor_temperatures = next_states_array[:, 13:40:2]
+                sensor_humidities = next_states_array[:, 12:40:2]
+
+                fig_temperature, axs_T = plt.subplots(2, 7, figsize=(28, 8), dpi=50)
+
+                for i in range(14):
+                    ax = axs_T[i // 7, i % 7]
+                    ax.plot(sensor_temperatures[:,i], label=f'Sensor {i+1} Temperature')
+                    ax.set_title(f'Sensor {i+1} Temperature Over Time')
+                    ax.set_xlabel('Time Step')
+                    ax.set_ylabel('Temperature (°C)')
+                    ax.set_ylim([22,32])
+
+                plt.tight_layout()
+                fig_temperature.savefig(f'{filename}sensors_temperatures.png')
+                plt.close()
+               
+                
+
+
+                fig_humidity, axs_H = plt.subplots(2, 7, figsize=(28, 8), dpi=50)
+                for i in range(14):
+                    ax = axs_H[i // 7, i % 7]
+                    ax.plot(sensor_humidities[:,i], label=f'Sensor {i+1} Humidity')
+                    ax.set_title(f'Sensor {i+1} Humidity Over Time')
+                    ax.set_xlabel('Time Step')
+                    ax.set_ylabel('Humidity (%)')
+                    ax.set_ylim([20,80])
+                    # ax.legend()
+
+                plt.tight_layout()
+                fig_humidity.savefig(f'{filename}sensors_humidities.png')
+                plt.close()
+               
+
+
+
+        # 每个 episode 保存模型
+        torch.save(agent.actor.state_dict(), f'{filename}actor_model.pth')
+        torch.save(agent.critic_1.state_dict(), f'{filename}critic1_model.pth')
+        torch.save(agent.critic_2.state_dict(), f'{filename}critic2_model.pth')
 
 print("Training complete!")

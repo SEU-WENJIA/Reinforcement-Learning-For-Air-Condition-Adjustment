@@ -2,32 +2,54 @@ import numpy as np
 
 # 定义TD3模型的奖励函数
 def calculate_reward_global(state, next_state, action, prev_action, params):
-    alpha, beta, gamma, T_ideal, H_ideal, T_max, H_max, E, C = params  # 数据网格搜索获得
-    E_max = 85  # 数据中获得
-    C_max = 4  # 同时调整四个空调状态
-
     '''
     计算奖励函数
     R(s,a,v) = \alpha*(1-- 0.05 * d_T^normalized - 0.05 * d_H^normalized) - \beta * E_total - \gamma * C_switch)
     d_T^normalized, d_H^normalized:  分别为14个传感器温度、湿度偏离理想范围的程度
     E_total: 4个空调设备的能耗水平(与空调设定温度直接相关)
-    C_switch： 4台空调状态切换成本
+    C_switch:  4台空调状态切换成本
     '''
 
-    # 14个传感器偏离理想范围,非线性温湿度偏离惩罚 + 标准化温度和湿度偏离值
-    d_T = sum((sensor_T - T_ideal) ** 2 for sensor_T in next_state[13:40][::2])  # 温度偏离理想范围的程度
-    d_H = sum((sensor_H - H_ideal) ** 2 for sensor_H in next_state[12:40][::2])  # 湿度偏离理想范围的程度
+    alpha, beta, gamma, T_ideal, H_ideal, T_max, H_max, E, C = params  # 数据网格搜索获得
+    E_max = 85  # 数据中获得
+    C_max = 4  # 同时调整四个空调状态
+
+
+    '''
+    温度误差： 14个传感器偏离理想范围,非线性温湿度偏离惩罚 + 标准化温度和湿度偏离值
+    '''
+
+    d_T = 0
+    T_ideal_min = 25 # T_ideal - 2
+    T_ideal_max = 28 #T_ideal + 2
+    for i in range(13, 40, 2):  # 每隔一个元素取一个，对应14个传感器
+        sensor_T = next_state[i]
+        if sensor_T < T_ideal_min or sensor_T > T_ideal_max:    # 检查是否超出理想范围          
+            d_T += (sensor_T - T_ideal) ** 2   # 计算并累加温度偏离理想温度的平方]
     d_T_normalized = d_T / (14 * T_max ** 2)    # 14 个传感器，每个传感器最大偏离 T_max
+    
+    
+    d_H = 0
+    H_ideal_min = 40 # H_ideal - 10
+    H_ideal_max = 60 # H_ideal + 10  
+    for i in range(12, 40, 2):  # 每隔一个元素取一个，对应14个传感器
+        sensor_H = next_state[i]
+        if sensor_H < H_ideal_min or sensor_H > H_ideal_max:    # 检查是否超出理想范围          
+            d_H += (sensor_H - H_ideal) ** 2   # 计算并累加温度偏离理想温度的平方]
     d_H_normalized = d_H / (14 * H_max ** 2)   # 14 个传感器，每个传感器最大偏离 H_max  
 
-    
-    E_total = sum(next_state[40+i] for i in range(4))  # 当前能耗水平
-    E_penalty = beta * (1 - np.exp(-E_total / E_max))  # 非线性能耗惩罚
+    # 能耗惩罚
+    P_min = 3
+    P_max = 30
+    E_total = sum((next_state[40+i] - P_min)/ (P_max - P_min) for i in range(4))  # 当前能耗水平
+    E_penalty = beta * E_total  # 非线性能耗惩罚
+
+
     C_switch = sum(abs(next_state[i] - state[i]) * C for i in range(0, 12, 3))  # 空调切换状态成本
     C_penalty = gamma * (1 - np.exp(-C_switch / C_max))   # 非线性切换成本惩罚
 
     
-    # 温度和湿度惩罚项
+    # 温度和湿度变化惩罚项
     temp_variance_penalty = np.var(next_state[13:40][::2]) / T_max
     hum_variance_penalty = np.var(next_state[12:40][::2]) / H_max
 
@@ -148,15 +170,32 @@ def calculate_reward_local(state, next_state, actions, prev_state, params):
     ac_P  = state[11]
     ac_status_next = next_state[0]
     
-
     # 标准化温度和湿度偏离值
-    d_T = sum((sensor_T - T_ideal)**2 for sensor_T in sensor_temp)  # 温度偏离理想范围的程度
-    d_H = sum((sensor_H - H_ideal)**2 for sensor_H in sensor_humidity) # 湿度偏离理想范围的程度
+    d_T = 0
+    T_ideal_min = 25 # T_ideal - 2
+    T_ideal_max = 28 #T_ideal + 2
+    for sensor_T in sensor_temp:
+        if sensor_T < T_ideal_min or sensor_T > T_ideal_max: 
+            d_T += (sensor_T - T_ideal)**2   # 温度偏离理想范围的程度
+    
+    
+    d_H = 0
+    H_ideal_min = 40 # H_ideal - 10
+    H_ideal_max = 60 # H_ideal + 10  
+    for sensor_H in sensor_humidity:
+        if sensor_H < H_ideal_min or sensor_H > H_ideal_max:
+            d_H += (sensor_H - H_ideal)**2  # 湿度偏离理想范围的程度
+    
+    
+    
     d_T_normalized = d_T / (4 * T_max ** 2)    # 4 个传感器，每个传感器最大偏离 T_max
     d_H_normalized = d_H / (4 * H_max ** 2)   # 4 个传感器，每个传感器最大偏离 H_max  
 
-    E_total = ac_status * ac_P   # 当前能耗水平
-    E_penalty = beta * (1 - np.exp(-E_total / E_max))  # 非线性能耗惩罚
+    P_min = 3
+    P_max = 30    
+
+    E_total = ac_status * (ac_P - P_min) / (P_max - P_min)   # 当前能耗水平
+    E_penalty = beta * E_total  # 非线性能耗惩罚
     
     C_switch = abs(ac_status_next - ac_status) * C   # 空调切换状态成本
     C_penalty = gamma * (1 - np.exp(-C_switch / C_max))   # 非线性切换成本惩罚

@@ -26,22 +26,24 @@ data = pd.read_csv('data\\data01.csv')
 
 
 # 参数
-best_params = (5.74040941e-02,  2.60904007e-04, -1.78204446e+01,  1.82571830e+00,
+best_params = (5.74040941e-02,  2.60904007e-04, -1.78204446e+01,  2.52571830e+01,
   6.81185427e+01,  1.99094691e+02,  9.87365351e+02,  1.00000000e+01, -3.35105392e-04)
 
 
 
-# 初始化环境和代理
-num_agents = 4
-obs_dim = 12  # 每个智能体的局部观察维度
+num_agents = 4   # 初始化环境和代理
+obs_dim = 12    # 每个智能体的局部观察维度
 action_dim = 2  # 每个智能体的局部动作维度
+
 vdns = [VDN(obs_dim, action_dim) for _ in range(num_agents)]
 
 num_episodes = 1
-max_steps = len(data) - 1
+max_steps = 10000
 
 # 获取当前时间
 current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
 
 
 filename = f'results\\{current_time}_VDN\\'
@@ -69,8 +71,8 @@ with open(f'{filename}VDN_training_log_{current_time}.txt', 'w') as log_file:
 
                 # 选择动作
                 actions = vdns[i].select_action(states)
+                actions[0] = int((actions[0] + 1) / 2 >= 0.5)
                
-
                 # 执行动作，获取下一个状态
                 next_states = get_state_local(data.iloc[t + 1], i + 1)
 
@@ -101,14 +103,16 @@ with open(f'{filename}VDN_training_log_{current_time}.txt', 'w') as log_file:
             np.save(f'{filename}actions.npy',actions_list)
             np.save(f'{filename}rewards.npy',rewards)
             np.save(f'{filename}next_states.npy',states_list)
-            # 输出当前步骤的信息
-
-
-            if max_steps%50==0:
-                # 可视化action 结果
-                fig, axs = plt.subplots(2, 4, figsize=(20, 10),dpi=600)  # 注意这里的figsize调整为15x10更合适
+            
+            
+            # 可视化结果
+            if (t+1)%200==0:
+                
                 actions_plot = np.array(actions_list)
-                # 绘制4个空调的状态
+
+                fig, axs = plt.subplots(2, 4, figsize=(20, 10),dpi=600)  # 注意这里的figsize调整为15x10更合适
+               
+                # 绘制4个空调的动作
                 for i in range(4):
                     # 获取当前空调的状态和温度子图
                     ax_state = axs[0, i]
@@ -128,7 +132,53 @@ with open(f'{filename}VDN_training_log_{current_time}.txt', 'w') as log_file:
 
                 plt.tight_layout()
                 fig.savefig(f'{filename}ac_status_and_Teratures.png')
+                plt.close()        
 
+
+                state_plot = np.array(states_list)  # (T,48)
+                # 四个空调的附近传感器湿度和温度
+                fig_H, axs_H = plt.subplots(1, 4, figsize=(20, 5), dpi=600)
+                fig_T, axs_T = plt.subplots(1, 4, figsize=(20, 5), dpi=600)
+
+                for i in range(4):
+                    # 提取湿度数据
+                    data_H = state_plot[:, 4 + i * 12:11 + i * 12:2]  # (T, 4) 每个空调的4个湿度传感器数据
+                    
+                    # 提取温度数据
+                    data_T = state_plot[:, 3 + i * 12:11 + i * 12:2]  # (T, 4) 每个空调的4个温度传感器数据
+                    
+                    # 绘制湿度数据
+                    ax_H = axs_H[i]
+                    for j in range(data_H.shape[1]):
+                        ax_H.plot(data_H[:, j],  linestyle='-', label=f'Sensor {j+1}')
+                    ax_H.set_title(f'Air Condition {i+1} Humidity')
+                    ax_H.set_xlabel('Time Step')
+                    ax_H.set_ylabel('Humidity (%)')
+                    ax_H.set_ylim([20,80])
+                    ax_H.legend()
+
+                    
+                    # 绘制温度数据
+                    ax_T = axs_T[i]
+                    for j in range(data_T.shape[1]):
+                        ax_T.plot(data_T[:, j], linestyle='-', label=f'Sensor {j+1}')
+                    ax_T.set_title(f'Air Condition {i+1} Temperature')
+                    ax_T.set_xlabel('Time Step')
+                    ax_T.set_ylabel('Temperature (°C)')
+                    ax_T.legend()
+                    ax_T.set_ylim([22,32])
+
+
+
+
+                # 调整布局以避免重叠
+                plt.tight_layout()
+               
+                # 保存图像（可选）
+                fig_H.savefig(f'{filename}sensors_humidity.png', bbox_inches='tight')
+                fig_T.savefig(f'{filename}sensors_temperature.png', bbox_inches='tight')
+                plt.close()
+                plt.close()
 
                 fig, axs = plt.subplots(1,1, figsize=(3, 2.4),dpi=300)  # 注意这里的figsize调整为15x10更合适
                 rewards_plot = np.array(rewards)
@@ -141,13 +191,12 @@ with open(f'{filename}VDN_training_log_{current_time}.txt', 'w') as log_file:
 
                 plt.close()
 
+                print(f"Step {t + 1}/{max_steps}: Action {temp_actions}, Reward {temp_reward}, Next State {temp_states} \n")
 
 
 
-
-
-# 保存模型
-for i, vdn in enumerate(vdns):
-    torch.save(vdn.local_value_net.state_dict(), f'{filename}local_value_net_ac{i + 1}.pth')
+            # 保存模型
+            for i, vdn in enumerate(vdns):
+                torch.save(vdn.local_value_net.state_dict(), f'{filename}local_value_net_ac{i + 1}.pth')
 
 print("Training complete!")
